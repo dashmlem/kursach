@@ -1,4 +1,4 @@
-name: Docker Compose CI/CD
+name: CI/CD
 
 on:
   push:
@@ -10,12 +10,46 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-test:
+  build:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2  # Устанавливаем Docker Buildx
+
+      - name: Install Docker Compose
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache  # Кэшируем слои Docker для ускорения сборки
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_NAME }}  # Используем секреты GitHub для логина
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Build and push Docker images
+        run: |
+          docker-compose -f docker-compose.yml build --cache-from=type=local,src=/tmp/.buildx-cache --cache-to=type=local,dest=/tmp/.buildx-cache
+          docker-compose -f docker-compose.yml push
+
+  test:
+    runs-on: ubuntu-lastest
+    needs: build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3  # Клонируем репозиторий
 
       - name: Install Docker Compose
         run: |
@@ -23,7 +57,34 @@ jobs:
           sudo chmod +x /usr/local/bin/docker-compose
           docker-compose --version
 
-      - name: Build and Deploy with Docker Compose
+      - name: Install Docker Compose
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_NAME }}  # Используем секреты GitHub для логина
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Pulling from Docker Hub
+        run: |
+          docker-compose pull
+
+      - name: Start Docker Compose services
+        run: |
+          docker-compose -f docker-compose.yml up -d
+
+      - name: Stop Docker Compose services
         run: |
           docker-compose down
-          docker-compose up -d
+  deploy:
+    runs-on: ubuntu-lastest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3  # Клонируем репозиторий
+      - name: Deploy to server
+        run: |
+          echo "Deploying"
