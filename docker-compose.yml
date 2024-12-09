@@ -1,0 +1,62 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "5000:5000"
+    depends_on:
+      - db
+      - social-api
+      - analytics
+    networks:
+      - app-network
+    environment:
+      - PGUSER=admin
+      - PGPASSWORD=password
+      - PGHOST=db
+      - PGPORT=5432
+      - PGDATABASE=ads_db
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ads_db
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d  
+    networks:
+      - app-network
+
+  social-api:
+    build:
+      context: ./social-api
+    ports:
+      - "8001:8001"
+    networks:
+      - app-network
+
+  analytics:
+    build:
+      context: ./analytics
+    ports:
+      - "8002:8002"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  db_data:
